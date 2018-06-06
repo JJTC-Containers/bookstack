@@ -1,0 +1,114 @@
+version: '3.1'
+services:
+  db:
+    image: mariadb:10.2
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
+      - MYSQL_DATABASE=${DB_DATABASE}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - bookstack
+
+  cache:
+    image: redis:4-alpine
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+    volumes:
+      - cache:/data/
+    networks:
+      - bookstack
+    labels:
+      - "traefik.enable=false"
+
+  app:
+    image: jjtc/bookstack:0.22-r0
+    build: ./app/
+    restart: unless-stopped
+#    env_file: .env
+    depends_on:
+      - db
+      - cache
+    volumes:
+      - .env:/var/www/html/.env:rw
+      - public:/var/www/html/public/:rw
+      - uploads:/var/www/html/public/uploads:rw
+      - storage:/var/www/html/public/storage:rw
+    networks:
+      - bookstack
+    labels:
+      - "traefik.enable=false"
+
+  # av:
+  #   image: jjtc/av:0.100.0-r0
+  #   build: ./av/
+  #   restart: unless-stopped
+  #   tty: true
+  #   environment:
+  #     - TZ=${TZ}
+  #   volumes:
+  #     - ./av/conf/:/etc/clamav/
+  #   networks:
+  #     - bookstack
+  #   labels:
+  #     - "traefik.enable=false"
+
+  web:
+    image: nginx:mainline-alpine
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ}
+#    command: /bin/sh -c "envsubst < /etc/nginx/conf.d/default.template > /etc/nginx/conf.d/default.conf &&
+#        nginx -qt &&
+#        until ping app -c1 > /dev/null; do sleep 1; done &&
+#        until ping cache -c1 > /dev/null; do sleep 1; done &&
+#        exec nginx -g 'daemon off;'"
+    depends_on:
+      - app
+    volumes:
+      - ./web/default.conf:/etc/nginx/conf.d/default.conf:rw
+#     - ./web/default.template:/etc/nginx/conf.d/default.template:rw
+      - public:/var/www/public/:ro
+      - uploads:/var/www/public/uploads:rw
+      - storage:/var/www/public/storage:rw
+    expose:
+      - "80/tcp"
+    networks:
+      - web
+      - bookstack
+    labels:
+      - "traefik.frontend.headers.STSPreload=true"
+      - "traefik.frontend.headers.STSSeconds=31536000"
+      - "traefik.backend=bookstack"
+      - "traefik.docker.network=web"
+      - "traefik.frontend.rule=Host:${APP_URL_BASE}"
+      - "traefik.enable=true"
+      - "traefik.port=80"
+      - "traefik.default.protocol=http"
+
+  #traefik:
+  #  image: traefik:latest
+  #  restart: unless-stopped
+  #  command: traefik --docker --acme=true --acme.domains='your.domain.tld' --acme.email='your@email.tld' --acme.entrypoint=https --acme.storagefile=acme.json --defaultentrypoints=http --defaultentrypoints=https --entryPoints='Name:http Address::80 Redirect.EntryPoint:https' --entryPoints='Name:https Address::443 TLS.Certificates:'
+  #  ports:
+  #    - 80:80
+  #    - 443:443
+  #  volumes:
+  #    - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  bookstack:
+  web:
+    external: true
+
+volumes:
+  db-data:
+  cache:
+  public:
+  uploads:
+  storage:

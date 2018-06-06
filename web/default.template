@@ -1,0 +1,52 @@
+server {
+	listen 80;
+	listen [::]:80;
+	index index.php index.html;
+
+	server_name _;
+	root /var/www/public/;
+
+	client_max_body_size 64m;
+	client_body_timeout 120s; # Default is 60, May need to be increased for very large uploads
+	client_body_buffer_size 128k;
+
+	add_header Strict-Transport-Security "max-age=15768000; includeSubDomains";
+	add_header X-Content-Type-Options nosniff;
+	add_header X-XSS-Protection "1; mode=block";
+	add_header X-Robots-Tag none;
+	add_header X-Download-Options noopen;
+	add_header X-Permitted-Cross-Domain-Policies none;
+
+	location / {
+		try_files $uri $uri/ /index.php?$query_string;
+	}
+ 
+	location ~ ^/(?:\.htaccess|data|config|db_structure\.xml|README) {
+		deny all;
+	}
+  
+	location ~* \.(?:jpg|jpeg|gif|bmp|ico|png|css|js|swf|pdf|html|xml|txt)$ {
+#	location ~* \.(jpg|jpeg|gif|png|css|js|ico|xml|html|xml|txt)$ {
+		access_log        off;
+		log_not_found     off;
+		expires           360d;
+	}
+
+	# Pass PHP scripts to PHP-FPM
+#	location ~ \.php(?:$|/) {
+	location ~ \.php$ {
+		try_files $uri =404;
+		fastcgi_split_path_info ^(.+\.php)(/.+)$;
+		fastcgi_pass app:9000;
+		fastcgi_index index.php;
+		include fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME /var/www/html/public/$fastcgi_script_name;
+		fastcgi_param PATH_INFO $fastcgi_path_info;
+	}
+
+	location ~ /\. {
+		access_log off;
+		log_not_found off;
+		deny all;
+	}
+}
